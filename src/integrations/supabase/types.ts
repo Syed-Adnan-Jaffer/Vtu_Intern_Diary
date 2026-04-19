@@ -14,7 +14,99 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      diary_entries: {
+        Row: {
+          bullets: string | null
+          content: string | null
+          created_at: string
+          day_number: number | null
+          entry_date: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bullets?: string | null
+          content?: string | null
+          created_at?: string
+          day_number?: number | null
+          entry_date: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bullets?: string | null
+          content?: string | null
+          created_at?: string
+          day_number?: number | null
+          entry_date?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          branch: string | null
+          college: string | null
+          company_name: string | null
+          created_at: string
+          end_date: string | null
+          full_name: string | null
+          id: string
+          internship_title: string | null
+          internship_type: string | null
+          mentor_name: string | null
+          semester: string | null
+          skip_weekends: boolean
+          start_date: string | null
+          updated_at: string
+          usn: string | null
+          weekly_plan: string | null
+        }
+        Insert: {
+          branch?: string | null
+          college?: string | null
+          company_name?: string | null
+          created_at?: string
+          end_date?: string | null
+          full_name?: string | null
+          id: string
+          internship_title?: string | null
+          internship_type?: string | null
+          mentor_name?: string | null
+          semester?: string | null
+          skip_weekends?: boolean
+          start_date?: string | null
+          updated_at?: string
+          usn?: string | null
+          weekly_plan?: string | null
+        }
+        Update: {
+          branch?: string | null
+          college?: string | null
+          company_name?: string | null
+          created_at?: string
+          end_date?: string | null
+          full_name?: string | null
+          id?: string
+          internship_title?: string | null
+          internship_type?: string | null
+          mentor_name?: string | null
+          semester?: string | null
+          skip_weekends?: boolean
+          start_date?: string | null
+          updated_at?: string
+          usn?: string | null
+          weekly_plan?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
