@@ -4,6 +4,7 @@ import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "@/components/AppHeader";
+import { ThemeProvider } from "@/components/theme-provider";
 
 function NotFoundComponent() {
   return (
@@ -75,14 +76,16 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
-    <AuthProvider>
-      <div className="min-h-screen bg-background">
-        <AppHeader />
-        <main className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
-          <Outlet />
-        </main>
-        <Toaster />
-      </div>
-    </AuthProvider>
+    <ThemeProvider defaultTheme="system" storageKey="vtu-theme">
+      <AuthProvider>
+        <div className="min-h-screen bg-background">
+          <AppHeader />
+          <main className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
+            <Outlet />
+          </main>
+          <Toaster />
+        </div>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

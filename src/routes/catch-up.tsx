@@ -13,9 +13,11 @@ import { generateBulkEntries } from "@/server/diary.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { buildInternshipDays, formatDayLabel } from "@/lib/diary-utils";
 import { parseISO } from "date-fns";
-import { ArrowLeft, Sparkles, Save } from "lucide-react";
+import { ArrowLeft, Sparkles, Save, Download } from "lucide-react";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { saveAs } from "file-saver";
 import { toast } from "sonner";
-
+import { GoogleGenerativeAI } from "@google/generative-ai";
 export const Route = createFileRoute("/catch-up")({
   component: () => (
     <RequireAuth>
@@ -29,7 +31,6 @@ type DayItem = { isoDate: string; dayNumber: number; dateLabel: string };
 function CatchUp() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const generate = useServerFn(generateBulkEntries);
 
   const [allDays, setAllDays] = useState<DayItem[]>([]);
   const [filledDates, setFilledDates] = useState<Set<string>>(new Set());
@@ -78,16 +79,94 @@ function CatchUp() {
     }
     setGenerating(true);
     try {
-      const res = await generate({ data: { summary, days: eligibleDays } });
-      const map: Record<string, string> = {};
-      for (const e of res.entries) {
-        const day = eligibleDays.find((d) => d.dayNumber === e.dayNumber);
-        if (day) map[day.isoDate] = e.content;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        toast.error("Error: VITE_GEMINI_API_KEY is missing from your .env file!");
+        setGenerating(false);
+        return;
       }
-      // any days not returned, leave empty
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const dayList = eligibleDays.map((d) => `- Day ${d.dayNumber} (${d.dateLabel})`).join("\n");
+      
+      const prompt = `You are a professional VTU internship mentor. 
+      The student has noted these topics covered across a specific period:
+      ${summary}
+
+      Generate ONE diary entry for EACH of the following ${eligibleDays.length} days. Spread the topics naturally across days in a logical learning progression. Vary phrasing, sentence structure, and the specific aspect emphasized each day.
+
+      Days to fill:
+      ${dayList}
+
+      Output STRICTLY a valid JSON object matching exactly this structure, with no markdown fences:
+      {
+        "entries": [
+          {
+            "dayNumber": <number>,
+            "entryData": {
+              "summary": "around 50 words describing the objective and work done in first-person past-tense",
+              "hours": "6.5",
+              "links": "",
+              "learnings": "1-2 sentences on what was learned or skills gained",
+              "blockers": "None",
+              "skills": "Comma separated list of 3-5 technical keywords"
+            }
+          }
+        ]
+      }`;
+
+      const modelsToTry = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite-001", "gemini-1.5-flash-001", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
+      let text = "";
+      for (const modelName of modelsToTry) {
+        try {
+          // Force v1 explicitly to bypass v1beta model masking limit.
+          const model = genAI.getGenerativeModel(
+            { model: modelName },
+            { apiVersion: 'v1' }
+          );
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          text = response.text() || "";
+          if (text) break;
+        } catch (err: any) {
+          console.warn(`Model ${modelName} failed. Trying next...`, err.message);
+          
+          if (err.message.includes("429") || err.message.includes("quota")) {
+            throw new Error(`Rate Limit Exceeded on ${modelName}! Please wait 60 seconds. Error: ${err.message}`);
+          }
+          if (modelName === modelsToTry[modelsToTry.length - 1]) {
+            throw new Error(`Generation failed. Last error: ${err.message}`);
+          }
+        }
+      }
+      
+      text = text.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (parseError) {
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new Error("AI returned invalid JSON.");
+        parsed = JSON.parse(m[0]);
+      }
+
+      if (!parsed.entries || !Array.isArray(parsed.entries)) {
+         throw new Error("AI response missing entries array.");
+      }
+
+      const map: Record<string, string> = {};
+      for (const e of parsed.entries) {
+        const day = eligibleDays.find((d) => d.dayNumber === e.dayNumber);
+        if (day) {
+           map[day.isoDate] = typeof e.entryData === 'object' ? JSON.stringify(e.entryData) : e.entryData || "";
+        }
+      }
+      
       setDrafts(map);
       toast.success(`Generated ${Object.keys(map).length} entries — review and save.`);
-    } catch (err) {
+    } catch (err: any) {
+      console.error(err);
       toast.error(err instanceof Error ? err.message : "Generation failed");
     } finally {
       setGenerating(false);
@@ -121,6 +200,77 @@ function CatchUp() {
     }
     toast.success(`${rows.length} drafts saved. Open each to finalize.`);
     void navigate({ to: "/dashboard" });
+  };
+
+  const handleExportWord = async () => {
+    try {
+      const children: any[] = [];
+      const sortedDays = eligibleDays
+        .filter((d) => drafts[d.isoDate])
+        .sort((a, b) => a.dayNumber - b.dayNumber);
+
+      for (const d of sortedDays) {
+        let parsed;
+        try {
+          parsed = JSON.parse(drafts[d.isoDate]);
+        } catch {
+          parsed = { summary: drafts[d.isoDate] };
+        }
+
+        children.push(
+          new Paragraph({
+            text: `Day ${d.dayNumber} — ${d.dateLabel}`,
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 400, after: 200 },
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Work Summary: ", bold: true }),
+              new TextRun(parsed.summary || "No summary provided."),
+            ],
+            spacing: { after: 120 },
+          })
+        );
+
+        if (parsed.hours) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: "Hours Logged: ", bold: true }), new TextRun(String(parsed.hours))],
+            })
+          );
+        }
+        if (parsed.learnings) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: "Learnings: ", bold: true }), new TextRun(parsed.learnings)],
+            })
+          );
+        }
+        if (parsed.skills) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: "Skills Used: ", bold: true }), new TextRun(parsed.skills)],
+            })
+          );
+        }
+      }
+
+      if (children.length === 0) {
+        toast.error("No valid entries to export.");
+        return;
+      }
+
+      const doc = new Document({
+        sections: [{ properties: {}, children }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `VTU_Internship_Diary_${allDays[0]?.isoDate || "Catchup"}.docx`);
+      toast.success("Word document downloaded successfully!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to generate Word document");
+    }
   };
 
   if (loading) return <div className="py-12 text-center text-muted-foreground">Loading…</div>;
@@ -219,10 +369,16 @@ function CatchUp() {
                   />
                 </div>
               ))}
-            <Button onClick={handleSaveAll} disabled={saving}>
-              <Save className="mr-2 h-4 w-4" />
-              {saving ? "Saving…" : "Save all as drafts"}
-            </Button>
+            <div className="flex flex-wrap gap-3 pt-2">
+              <Button onClick={handleSaveAll} disabled={saving}>
+                <Save className="mr-2 h-4 w-4" />
+                {saving ? "Saving…" : "Save all as drafts"}
+              </Button>
+              <Button onClick={handleExportWord} variant="outline">
+                <Download className="mr-2 h-4 w-4" />
+                Download as Word
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

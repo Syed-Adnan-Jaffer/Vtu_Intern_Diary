@@ -27,14 +27,9 @@ export const Route = createFileRoute("/profile")({
 });
 
 const INTERNSHIP_TYPES = [
-  "Web Development",
-  "Mobile Development",
-  "Machine Learning / AI",
-  "Data Science",
-  "Cloud / DevOps",
-  "Embedded Systems",
-  "Cybersecurity",
-  "Other",
+  "Free",
+  "Paid",
+  "Stipend",
 ];
 
 type Form = {
@@ -75,6 +70,7 @@ function ProfilePage() {
   const [form, setForm] = useState<Form>(empty);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isUsnTaken, setIsUsnTaken] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -110,9 +106,33 @@ function ProfilePage() {
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
+  const checkUsnAvailability = async (usnToCheck: string) => {
+    if (!usnToCheck || !user) {
+      setIsUsnTaken(false);
+      return;
+    }
+
+    // @ts-expect-error - RPC function exists in Supabase but local types are not synced
+    const { data, error } = await supabase.rpc('check_usn_exists', { usn_to_check: usnToCheck.toUpperCase() });
+
+    if (error) {
+      toast.error("Database check failed! You haven't run the SQL script in Supabase yet.");
+      setIsUsnTaken(false); // Can't block strictly if the DB isn't set up, but we warned them.
+      return;
+    }
+
+    if (data === true) {
+      toast.error("This USN is already registered to another account.");
+      setIsUsnTaken(true);
+    } else {
+      setIsUsnTaken(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
     if (!form.full_name || !form.usn || !form.start_date || !form.end_date) {
       toast.error("Please fill in name, USN, and internship dates.");
       return;
@@ -121,6 +141,33 @@ function ProfilePage() {
       toast.error("End date must be after start date.");
       return;
     }
+
+    setSaving(true);
+
+    // Strict save-time database check for duplicates
+    // @ts-expect-error
+    const { data: isTaken, error: rpcError } = await supabase.rpc('check_usn_exists', { usn_to_check: form.usn.toUpperCase() });
+    
+    if (rpcError) {
+      toast.error("Warning: The SQL function check_usn_exists is missing from your Supabase database! Form blocked for safety.");
+      setSaving(false);
+      return;
+    } 
+    
+    if (isTaken === true) {
+      toast.error("Cannot save: This USN is already in use.");
+      setIsUsnTaken(true);
+      setSaving(false);
+      return;
+    }
+
+    // Secondary check relying on UI state
+    if (isUsnTaken) {
+      toast.error("Cannot save: This USN is already in use.");
+      setSaving(false);
+      return;
+    }
+
     setSaving(true);
     const { error } = await supabase
       .from("profiles")
@@ -132,8 +179,14 @@ function ProfilePage() {
       })
       .eq("id", user.id);
     setSaving(false);
+
     if (error) {
-      toast.error(error.message);
+      // Handle Postgres unique constraint violation
+      if (error.code === "23505" || error.message.toLowerCase().includes("unique")) {
+        toast.error("This USN is already registered to another account.");
+      } else {
+        toast.error(error.message);
+      }
       return;
     }
     toast.success("Profile saved");
@@ -157,7 +210,22 @@ function ProfilePage() {
                 <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} required />
               </Field>
               <Field label="USN" required>
-                <Input value={form.usn} onChange={(e) => set("usn", e.target.value)} required placeholder="e.g. 1XX21CS001" />
+                <Input
+                  className={isUsnTaken ? "border-destructive focus-visible:ring-destructive" : ""}
+                  value={form.usn}
+                  onChange={(e) => {
+                    set("usn", e.target.value.toUpperCase());
+                    if (isUsnTaken) setIsUsnTaken(false);
+                  }}
+                  onBlur={(e) => checkUsnAvailability(e.target.value)}
+                  required
+                  placeholder="e.g. 1XX21CS001"
+                />
+                {isUsnTaken && (
+                  <p className="text-xs text-destructive mt-1 font-medium">
+                    This USN is already registered to another account.
+                  </p>
+                )}
               </Field>
               <Field label="Branch / Course">
                 <Input value={form.branch} onChange={(e) => set("branch", e.target.value)} placeholder="CSE, ISE, ECE…" />
@@ -188,9 +256,6 @@ function ProfilePage() {
               <Field label="Company / Organization">
                 <Input value={form.company_name} onChange={(e) => set("company_name", e.target.value)} />
               </Field>
-              <Field label="Mentor name">
-                <Input value={form.mentor_name} onChange={(e) => set("mentor_name", e.target.value)} />
-              </Field>
               <Field label="Start date" required>
                 <Input type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} required />
               </Field>
@@ -208,14 +273,21 @@ function ProfilePage() {
             </Field>
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
-                <Label htmlFor="weekends" className="font-medium">Skip weekends</Label>
-                <p className="text-xs text-muted-foreground">Saturdays &amp; Sundays won't appear on your dashboard.</p>
+                <Label htmlFor="weekends" className="font-medium">Weekend behavior</Label>
+                <p className="text-xs text-muted-foreground">Select how weekends should be handled.</p>
               </div>
-              <Switch
-                id="weekends"
-                checked={form.skip_weekends}
-                onCheckedChange={(v) => set("skip_weekends", v)}
-              />
+              <Select
+                value={form.skip_weekends ? "both" : "sunday"}
+                onValueChange={(v) => set("skip_weekends", v === "both")}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both">Skip both Sat & Sun</SelectItem>
+                  <SelectItem value="sunday">Skip only Sunday</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <Button type="submit" disabled={saving} className="w-full sm:w-auto">
               {saving ? "Saving…" : "Save profile"}

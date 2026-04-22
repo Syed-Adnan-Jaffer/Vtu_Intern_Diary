@@ -1,19 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const SYSTEM_PROMPT = `You are an academic assistant that writes professional VTU (Visvesvaraya Technological University) internship diary entries for engineering students.
 
 Style guidelines:
 - Formal, academic tone in third or first person (use first person, past tense).
 - Length: 110-180 words per entry.
-- Structure each entry with three implicit parts (do not use headings):
-  1. Objective (what was the goal that day),
-  2. Work done (what was actually done — be specific with technologies/concepts),
-  3. Learning outcome (what was learned/skills gained).
-- Use the internship context (type, company, technologies) to make entries plausible.
-- Vary sentence structure across entries; do not repeat opening phrases.
-- Never invent confidential details. Keep it educational.
-- Output ONLY the diary entry text, no titles, no markdown, no bullet points.`;
+- Identify: 1. Objective, 2. Work done, 3. Learning outcome.
+- Use the internship context to make entries plausible.
+- Never invent confidential details. Keep it educational.`;
 
 type Profile = {
   full_name: string | null;
@@ -34,34 +30,27 @@ ${profile.weekly_plan ? `- Overall plan: ${profile.weekly_plan}` : ""}`;
 }
 
 async function callAI(messages: Array<{ role: string; content: string }>) {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("AI service is not configured");
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY") {
+    throw new Error("Missing Gemini API Key! Please add VITE_GEMINI_API_KEY=your_key_here to your .env file and restart Vite.");
+  }
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages,
-    }),
-  });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  if (resp.status === 429) {
-    throw new Error("Rate limit reached. Please wait a moment and try again.");
+  const systemMsg = messages.find((m) => m.role === "system")?.content || "";
+  const userMsg = messages.find((m) => m.role === "user")?.content || "";
+  
+  const prompt = `${systemMsg}\n\n${userMsg}`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text() || "";
+  } catch (error: any) {
+    console.error("Gemini API Error:", error);
+    throw new Error("AI service failed. Please check your API key and connection.");
   }
-  if (resp.status === 402) {
-    throw new Error("AI credits exhausted. Please add credits in Settings → Workspace → Usage.");
-  }
-  if (!resp.ok) {
-    const t = await resp.text();
-    console.error("AI gateway error:", resp.status, t);
-    throw new Error("AI service failed. Please try again.");
-  }
-  const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
 export const generateDiaryEntry = createServerFn({ method: "POST" })
@@ -96,13 +85,25 @@ export const generateDiaryEntry = createServerFn({ method: "POST" })
 The student's notes for the day:
 ${data.bullets}
 
-Write the polished diary entry now.`;
+Generate the diary entry as a JSON object with these EXACT keys:
+{
+  "summary": "110-160 words describing the objective and work done",
+  "hours": "generate a random number between 5.5 and 6.5",
+  "links": "",
+  "learnings": "What was learned/skills gained",
+  "blockers": "None",
+  "skills": "Comma separated list of technologies matching the notes"
+}
+Output STRICTLY a JSON object. No markdown formatting.`;
 
-    const content = await callAI([
+    const raw = await callAI([
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ]);
-    return { content };
+    
+    // strip code fences if any
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+    return { content: cleaned };
   });
 
 export const generateBulkEntries = createServerFn({ method: "POST" })
@@ -155,7 +156,7 @@ Days to fill:
 ${dayList}
 
 Output a JSON object only, no markdown, with this exact shape:
-{ "entries": [ { "dayNumber": <number>, "content": "<diary text 110-180 words>" }, ... ] }`;
+{ "entries": [ { "dayNumber": <number>, "entryData": { "summary": "...", "hours": "6.5", "links": "", "learnings": "...", "blockers": "None", "skills": "..." } } ] }`;
 
     const raw = await callAI([
       { role: "system", content: SYSTEM_PROMPT + "\n\nWhen asked for multiple days, output strict JSON as instructed." },
@@ -176,5 +177,11 @@ Output a JSON object only, no markdown, with this exact shape:
     if (!parsed.entries || !Array.isArray(parsed.entries)) {
       throw new Error("AI response missing entries.");
     }
-    return { entries: parsed.entries };
+    
+    const formattedEntries = parsed.entries.map((e: any) => ({
+      dayNumber: e.dayNumber,
+      content: typeof e.entryData === 'object' ? JSON.stringify(e.entryData) : e.content || JSON.stringify({ summary: e.content })
+    }));
+
+    return { entries: formattedEntries };
   });

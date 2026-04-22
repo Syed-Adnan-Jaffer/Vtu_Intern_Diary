@@ -1,4 +1,4 @@
-import { addDays, format, isWeekend, parseISO, differenceInCalendarDays } from "date-fns";
+import { addDays, format, isSunday, isSaturday, parseISO, differenceInCalendarDays } from "date-fns";
 
 export type DayInfo = {
   date: Date;
@@ -20,7 +20,8 @@ export function buildInternshipDays(
   let dayNum = 1;
   for (let i = 0; i <= total; i++) {
     const d = addDays(start, i);
-    if (skipWeekends && isWeekend(d)) continue;
+    if (skipWeekends && (isSaturday(d) || isSunday(d))) continue;
+    if (!skipWeekends && isSunday(d)) continue;
     days.push({ date: d, isoDate: format(d, "yyyy-MM-dd"), dayNumber: dayNum });
     dayNum++;
   }
