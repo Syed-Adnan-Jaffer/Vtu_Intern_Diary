@@ -1,4 +1,6 @@
 import { Outlet, createRootRoute, HeadContent, Scripts, Link } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
+import { Linkedin } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth-context";
@@ -48,6 +50,7 @@ export const Route = createRootRoute({
       { name: "twitter:card", content: "summary" },
     ],
     links: [
+      { rel: "icon", href: "/graduation-cap-fill.svg", type: "image/svg+xml" },
       { rel: "stylesheet", href: appCss },
       {
         rel: "stylesheet",
@@ -78,11 +81,70 @@ function RootComponent() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vtu-theme">
       <AuthProvider>
-        <div className="min-h-screen bg-background">
+        <div className="flex min-h-screen flex-col bg-background">
           <AppHeader />
-          <main className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
+          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:py-10">
             <Outlet />
           </main>
+          <footer className="border-t border-white/10 bg-zinc-900 font-sans text-white/85">
+            <div className="mx-auto grid w-full gap-10 px-4 py-12 md:grid-cols-3 md:px-8">
+              <div>
+                <h3 className="text-lg font-semibold text-white">VTU Intern Diary</h3>
+                <p className="mt-3 text-sm text-white/70">
+                  Simplifying internship documentation for VTU students.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-white">Product</h4>
+                <div className="mt-3 flex flex-col gap-2 text-sm">
+                  <Link to="/dashboard" className="text-white/75 transition-colors hover:text-sky-300">
+                    Dashboard
+                  </Link>
+                  <Link to="/catch-up" className="text-white/75 transition-colors hover:text-sky-300">
+                    Catch up
+                  </Link>
+                  <Link to="/export" className="text-white/75 transition-colors hover:text-sky-300">
+                    Export
+                  </Link>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-white">Support</h4>
+                <div className="mt-3 flex flex-col gap-2 text-sm">
+                  <a
+                    className="font-semibold text-white transition-colors hover:text-sky-300"
+                    href={`mailto:support.vtuinterndiary@gmail.com?subject=${encodeURIComponent("VTU Intern Diary Support Request")}&body=${encodeURIComponent(
+                      "Hi Support Team,\n\nI need help with:\n\nIssue details:\n- \n\nPage/feature:\n- \n\nExpected behavior:\n- \n\nActual behavior:\n- \n\nThanks,\n",
+                    )}`}
+                  >
+                    support.vtuinterndiary@gmail.com
+                  </a>
+                  <Link to="/" className="text-white/75 transition-colors hover:text-sky-300">
+                    Help Center
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-white/10">
+              <div className="mx-auto flex w-full flex-col gap-3 px-4 py-4 text-sm text-white/65 sm:flex-row sm:items-center sm:justify-between md:px-8">
+                <div>© 2026 VTU Intern Diary.</div>
+                <div className="flex items-center gap-4">
+                  <a
+                    href="https://www.linkedin.com/in/syed-adnan-jaffer-146b03360/"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="LinkedIn"
+                    className="transition-colors hover:text-sky-300"
+                  >
+                    <Linkedin className="h-5 w-5" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          </footer>
           <Toaster />
         </div>
       </AuthProvider>

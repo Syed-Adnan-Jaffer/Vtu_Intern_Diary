@@ -345,30 +345,32 @@ function CatchUp() {
             <CardTitle className="text-base">2. Review &amp; tweak</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {eligibleDays
-              .filter((d) => drafts[d.isoDate])
-              .map((d) => (
-                <div key={d.isoDate} className="space-y-1.5 rounded-lg border p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">Day {d.dayNumber} — {d.dateLabel}</div>
-                    <Checkbox
-                      checked={!!drafts[d.isoDate]}
-                      onCheckedChange={(v) => {
-                        if (!v) {
-                          const copy = { ...drafts };
-                          delete copy[d.isoDate];
-                          setDrafts(copy);
-                        }
-                      }}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {eligibleDays
+                .filter((d) => drafts[d.isoDate])
+                .map((d) => (
+                  <div key={d.isoDate} className="space-y-1.5 rounded-lg border p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold">Day {d.dayNumber} — {d.dateLabel}</div>
+                      <Checkbox
+                        checked={!!drafts[d.isoDate]}
+                        onCheckedChange={(v) => {
+                          if (!v) {
+                            const copy = { ...drafts };
+                            delete copy[d.isoDate];
+                            setDrafts(copy);
+                          }
+                        }}
+                      />
+                    </div>
+                    <Textarea
+                      rows={5}
+                      value={drafts[d.isoDate]}
+                      onChange={(e) => setDrafts({ ...drafts, [d.isoDate]: e.target.value })}
                     />
                   </div>
-                  <Textarea
-                    rows={5}
-                    value={drafts[d.isoDate]}
-                    onChange={(e) => setDrafts({ ...drafts, [d.isoDate]: e.target.value })}
-                  />
-                </div>
-              ))}
+                ))}
+            </div>
             <div className="flex flex-wrap gap-3 pt-2">
               <Button onClick={handleSaveAll} disabled={saving}>
                 <Save className="mr-2 h-4 w-4" />

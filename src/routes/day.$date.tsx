@@ -13,8 +13,9 @@ import { buildInternshipDays, formatDayLabel } from "@/lib/diary-utils";
 import { parseISO } from "date-fns";
 import { ArrowLeft, Sparkles, Save, CheckCircle2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-import { JAVA_CURRICULUM } from "@/lib/curriculum-data";
+import { DIARY_CURRICULUM } from "@/lib/diaryData";
 
 export const Route = createFileRoute("/day/$date")({
   component: () => (
@@ -37,6 +38,97 @@ function DayEditor() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const normalizeGeneratedText = (text: string): string => {
+    const trimmed = text.trim();
+    if (!trimmed) return "";
+    if (trimmed === "{}" || trimmed === "[]") return "";
+
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== "object") return trimmed;
+
+      const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+      const learnings = typeof parsed.learnings === "string" ? parsed.learnings.trim() : "";
+      const skills = typeof parsed.skills === "string" ? parsed.skills.trim() : "";
+      const hours = typeof parsed.hours === "string" ? parsed.hours.trim() : "";
+      const blockers = typeof parsed.blockers === "string" ? parsed.blockers.trim() : "";
+
+      if (!summary) return "";
+
+      const parts = [summary];
+      if (learnings) parts.push(`Learnings: ${learnings}`);
+      if (skills) parts.push(`Skills: ${skills}`);
+      if (hours) parts.push(`Hours: ${hours}`);
+      if (blockers) parts.push(`Blockers: ${blockers}`);
+      return parts.join("\n\n");
+    } catch {
+      return trimmed;
+    }
+  };
+
+  const extractGeneratedContent = (payload: unknown): string => {
+    const deepFindText = (value: unknown, depth = 0): string => {
+      if (depth > 4 || value == null) return "";
+      if (typeof value === "string") return value.trim();
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const found = deepFindText(item, depth + 1);
+          if (found) return found;
+        }
+        return "";
+      }
+      if (typeof value !== "object") return "";
+
+      const obj = value as Record<string, unknown>;
+      const priorityKeys = ["content", "text", "summary", "message"];
+      for (const key of priorityKeys) {
+        if (typeof obj[key] === "string" && (obj[key] as string).trim()) {
+          return (obj[key] as string).trim();
+        }
+      }
+
+      for (const nested of Object.values(obj)) {
+        const found = deepFindText(nested, depth + 1);
+        if (found) return found;
+      }
+      return "";
+    };
+
+    if (typeof payload === "string") return payload.trim();
+    if (!payload || typeof payload !== "object") return "";
+
+    const obj = payload as Record<string, unknown>;
+    const direct = obj.content;
+    if (typeof direct === "string") return direct.trim();
+
+    const data = obj.data;
+    if (data && typeof data === "object" && typeof (data as Record<string, unknown>).content === "string") {
+      return ((data as Record<string, unknown>).content as string).trim();
+    }
+
+    const result = obj.result;
+    if (result && typeof result === "object" && typeof (result as Record<string, unknown>).content === "string") {
+      return ((result as Record<string, unknown>).content as string).trim();
+    }
+
+    const deepText = deepFindText(payload);
+    if (deepText) return deepText;
+    return "";
+  };
+
+  const buildClientFallbackContent = (rawBullets: string, day: number | null, dayLabel: string): string => {
+    const items = rawBullets
+      .split("\n")
+      .map((line) => line.replace(/^[-*]\s*/, "").trim())
+      .filter(Boolean);
+
+    const objective = items[0] ?? "complete assigned internship tasks";
+    const work = items.length > 1 ? items.slice(0, 3).join("; ") : "perform practical learning activities";
+    const learning = items[1] ?? items[0] ?? "improved understanding through hands-on practice";
+
+    return `On Day ${day ?? "?"} (${dayLabel}), I focused on ${objective.toLowerCase()}. During the session, I worked on ${work.toLowerCase()}. I followed a structured and practical approach to complete the assigned work, verify outcomes, and maintain proper documentation. This activity strengthened my technical confidence and helped me understand how theoretical concepts are applied in a real professional environment. I also improved my communication, planning, and problem-solving skills while carrying out the tasks. Overall, the day was productive and contributed meaningfully to my internship learning progress.\n\nKey Learning: ${learning}\nSkills: Problem Solving, Documentation, Communication`;
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -66,11 +158,13 @@ function DayEditor() {
 
   const handleGenerate = async () => {
 
-    const localEntry = JAVA_CURRICULUM[date];
+    const javaEntry = (DIARY_CURRICULUM.java as any)[date];
+    const sqlEntry = (DIARY_CURRICULUM.sql as any)[date];
+    const localEntry = javaEntry || sqlEntry;
 
   if (localEntry) {
-    setBullets(localEntry.bullets);
-    setContent(localEntry.content);
+    setBullets(`- ${localEntry.summary}\n- ${localEntry.learnings}`);
+    setContent(`${localEntry.summary}\n\n${localEntry.learnings}\n\nSkills: ${localEntry.skills.join(', ')}`);
     toast.success("Loaded from local curriculum!");
     return; // Stop here, no need to call the expensive AI
   }
@@ -83,11 +177,75 @@ function DayEditor() {
     setGenerating(true);
     try {
       const dateLabel = formatDayLabel(parseISO(date));
-      const res = await generate({ data: { bullets, dayNumber: dayNumber ?? 1, dateLabel } });
-      setContent(res.content);
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("Missing VITE_GEMINI_API_KEY in .env");
+      }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const prompt = `You are an academic assistant that writes professional VTU internship diary entries.
+
+Student day info:
+- Day ${dayNumber ?? 1} (${dateLabel})
+
+The student's notes for the day:
+${bullets}
+
+Generate the diary entry as a JSON object with these EXACT keys:
+{
+  "summary": "110-160 words describing the objective and work done",
+  "hours": "generate a random number between 5.5 and 6.5",
+  "links": "",
+  "learnings": "What was learned/skills gained",
+  "blockers": "None",
+  "skills": "Comma separated list of technologies matching the notes"
+}
+Output STRICTLY a JSON object. No markdown formatting.`;
+
+      const modelsToTry = [
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash-lite-001",
+        "gemini-1.5-flash-001",
+        "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.5-flash",
+      ];
+
+      let text = "";
+      for (const modelName of modelsToTry) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName }, { apiVersion: "v1" });
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          text = (response.text() || "").replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+          if (text) break;
+        } catch (modelErr) {
+          console.warn(`Single-day model ${modelName} failed`, modelErr);
+        }
+      }
+
+      // Keep existing server function as a fallback path if client models all fail.
+      if (!text) {
+        const res = await generate({ data: { bullets, dayNumber: dayNumber ?? 1, dateLabel } });
+        text = extractGeneratedContent(res);
+      }
+
+      const generatedText = normalizeGeneratedText(text);
+      if (!generatedText) {
+        const fallbackText = buildClientFallbackContent(bullets, dayNumber, dateLabel);
+        setContent(fallbackText);
+        toast.warning("AI returned empty output. Loaded a local generated draft instead.");
+        return;
+      }
+      setContent(generatedText);
       toast.success("Entry generated — review and edit before saving.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Generation failed");
+      const message = err instanceof Error ? err.message : "Generation failed";
+      if (/quota|429|billing|rate limit|limit:\s*0/i.test(message)) {
+        toast.error("Gemini quota exceeded (429). Update billing/key, then try again.");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setGenerating(false);
     }

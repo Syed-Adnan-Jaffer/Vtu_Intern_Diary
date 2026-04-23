@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
-import { BookOpen, Menu, Moon, Sun, X } from "lucide-react";
+import { Menu, Moon, Sun, X } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { useState } from "react";
 
@@ -62,7 +62,7 @@ export function AppHeader() {
     <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur shadow-sm dark:shadow-none">
       <div className="mx-auto flex h-14 w-full items-center justify-between px-4 md:px-8">
         <Link to="/" className="flex items-center gap-2 font-semibold">
-          <BookOpen className="h-5 w-5 text-primary" />
+          <img src="/graduation-cap-fill.svg" alt="VTU Intern Diary" className="h-5 w-5 text-primary" />
           <span className="font-serif text-lg">VTU Intern Diary</span>
         </Link>
         

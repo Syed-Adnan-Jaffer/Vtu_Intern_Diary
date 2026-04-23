@@ -90,7 +90,7 @@ function Dashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-semibold">
-          Hi {profile.full_name?.split(" ")[0] || "there"} 👋
+          Hi {profile.full_name?.split(" ")[0] || "there"}
         </h1>
         <p className="mt-1 text-muted-foreground">
           {profile.internship_title ?? "Your internship"} · {finalized} of {total} days finalized
@@ -99,7 +99,7 @@ function Dashboard() {
         <Progress value={progress} className="mt-3 h-2" />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
         {days.map((d) => {
           const e = entryByDate.get(d.isoDate);
           const status: "finalized" | "draft" | "empty" =

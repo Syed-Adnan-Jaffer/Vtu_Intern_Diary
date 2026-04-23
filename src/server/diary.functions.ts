@@ -20,6 +20,40 @@ type Profile = {
   weekly_plan: string | null;
 };
 
+function buildFallbackEntry(
+  profile: Profile,
+  bullets: string,
+  dayNumber: number,
+  dateLabel: string,
+) {
+  const bulletLines = bullets
+    .split("\n")
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean);
+
+  const objective = bulletLines[0] ?? "Worked on assigned internship tasks";
+  const workDone =
+    bulletLines.length > 1 ? bulletLines.slice(0, 3).join("; ") : "Completed focused practical exercises";
+  const learning = bulletLines[1] ?? bulletLines[0] ?? "Improved practical understanding of the topic";
+
+  const summary = `On Day ${dayNumber} (${dateLabel}), I continued my internship work in ${profile.branch ?? "engineering"} at ${
+    profile.company_name ?? "the host organization"
+  }. The main objective was to ${objective.toLowerCase()}. During the session, I ${workDone.toLowerCase()}. I maintained a structured approach, verified each step, and documented key observations to keep the work aligned with internship expectations. This helped me build confidence in practical execution and strengthened my understanding of real-world workflow, communication, and problem-solving in a professional environment.`;
+
+  return JSON.stringify(
+    {
+      summary,
+      hours: "6.0",
+      links: "",
+      learnings: learning,
+      blockers: "None",
+      skills: "Problem Solving, Documentation, Communication",
+    },
+    null,
+    2,
+  );
+}
+
 function buildContext(profile: Profile, dayNumber: number, dateLabel: string) {
   return `Student context:
 - Branch: ${profile.branch ?? "Engineering"}
@@ -29,6 +63,18 @@ function buildContext(profile: Profile, dayNumber: number, dateLabel: string) {
 ${profile.weekly_plan ? `- Overall plan: ${profile.weekly_plan}` : ""}`;
 }
 
+function isValidDiaryJson(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "{}" || trimmed === "[]") return false;
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    return typeof parsed?.summary === "string" && parsed.summary.trim().length > 20;
+  } catch {
+    // Non-JSON prose is still acceptable as long as it is substantial.
+    return trimmed.length > 60;
+  }
+}
+
 async function callAI(messages: Array<{ role: string; content: string }>) {
   const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY") {
@@ -36,21 +82,46 @@ async function callAI(messages: Array<{ role: string; content: string }>) {
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
   const systemMsg = messages.find((m) => m.role === "system")?.content || "";
   const userMsg = messages.find((m) => m.role === "user")?.content || "";
   
   const prompt = `${systemMsg}\n\n${userMsg}`;
 
-  try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text() || "";
-  } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    throw new Error("AI service failed. Please check your API key and connection.");
+  // Mirror the working catch-up strategy: prefer v1 endpoint and fallback across models.
+  const models = [
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite-001",
+    "gemini-1.5-flash-001",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+  ];
+  let lastError: unknown = null;
+
+  for (const modelName of models) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName }, { apiVersion: "v1" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text()?.trim() || "";
+      if (text) return text;
+    } catch (error: any) {
+      lastError = error;
+      console.error(`Gemini API Error (${modelName}):`, error);
+    }
   }
+
+  const lastMessage = lastError instanceof Error ? lastError.message : String(lastError ?? "");
+  const quotaError =
+    /quota|429|too many requests|rate limit|billing|free_tier|limit:\s*0/i.test(lastMessage);
+  if (quotaError) {
+    throw new Error(
+      "Gemini quota exceeded for this API key (429). Enable billing or use a different key/project with available quota.",
+    );
+  }
+
+  throw new Error("AI service returned no text from Gemini. Please verify API key permissions and model access.");
 }
 
 export const generateDiaryEntry = createServerFn({ method: "POST" })
@@ -96,14 +167,28 @@ Generate the diary entry as a JSON object with these EXACT keys:
 }
 Output STRICTLY a JSON object. No markdown formatting.`;
 
-    const raw = await callAI([
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userPrompt },
-    ]);
-    
-    // strip code fences if any
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
-    return { content: cleaned };
+    try {
+      const raw = await callAI([
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ]);
+
+      // Strip code fences if any, then ensure we actually got usable text back.
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+      if (!isValidDiaryJson(cleaned)) {
+        const fallback = buildFallbackEntry(profile, data.bullets, data.dayNumber, data.dateLabel);
+        return { content: fallback };
+      }
+
+      return { content: cleaned };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/quota|429|billing|rate limit|limit:\s*0/i.test(message)) {
+        throw error;
+      }
+      const fallback = buildFallbackEntry(profile, data.bullets, data.dayNumber, data.dateLabel);
+      return { content: fallback };
+    }
   });
 
 export const generateBulkEntries = createServerFn({ method: "POST" })

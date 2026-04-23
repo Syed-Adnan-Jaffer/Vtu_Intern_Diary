@@ -1,21 +1,19 @@
-import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { BookOpen, CalendarDays, Sparkles, FileDown } from "lucide-react";
+import { PrimaryCTAButton } from "@/components/PrimaryCTAButton";
 
 export const Route = createFileRoute("/")({
   component: Index,
 });
 
 function Index() {
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">Loading…</div>
     );
   }
-  if (user) return <Navigate to="/dashboard" replace />;
-
   return (
     <div className="space-y-16 py-8">
       <section className="text-center">
@@ -24,39 +22,52 @@ function Index() {
           AI-assisted internship diary for VTU students
         </div>
         <h1 className="mx-auto max-w-3xl text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
-          Stop falling behind on your internship diary.
+          The ultimate companion for your VTU Internship.
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-base text-muted-foreground sm:text-lg">
-          Jot 2–3 quick bullet points each day. Get a polished, formal VTU-style entry.
-          Export everything as a Word document, ready to upload.
+          Effortlessly maintain a professional internship record. Input daily highlights, let AI handle
+          the formal expansion, and download a perfectly formatted .docx file.
         </p>
         <div className="mt-8 flex justify-center gap-3">
           <Link to="/auth">
-            <Button size="lg">Get started — it's free</Button>
+            <PrimaryCTAButton />
           </Link>
         </div>
       </section>
 
-      <section className="grid gap-6 sm:grid-cols-3">
-        {[
-          { icon: BookOpen, title: "Bullets in", body: "Type a few rough notes about what you learned today." },
-          { icon: Sparkles, title: "AI expands", body: "Get a 100–180 word formal diary entry, edit before saving." },
-          { icon: FileDown, title: "Export .docx", body: "Download a complete diary formatted for VTU submission." },
-        ].map(({ icon: Icon, title, body }) => (
-          <div key={title} className="rounded-xl border bg-card p-5">
-            <Icon className="h-6 w-6 text-primary" />
-            <h3 className="mt-3 text-lg font-semibold">{title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+      <section className="grid gap-6 lg:grid-cols-3">
+        <div className="rounded-xl border bg-card p-5 shadow-md transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-2xl hover:border-primary/50">
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-6 w-6 text-primary" />
+            <Sparkles className="h-5 w-5 text-primary" />
           </div>
-        ))}
-      </section>
+          <h3 className="mt-3 text-lg font-semibold">Bullets in → AI expands</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Type a few rough notes about what you learned today, and get a polished 100-180 word formal diary entry.
+          </p>
+        </div>
 
-      <section className="rounded-2xl border bg-card p-8 text-center">
-        <CalendarDays className="mx-auto h-7 w-7 text-primary" />
-        <h2 className="mt-3 text-2xl font-semibold">Behind on weeks of entries?</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-          Catch-up mode generates plausible, varied entries for missed days based on what you actually covered. Review them in seconds.
-        </p>
+        <Link
+          to="/export"
+          className="rounded-xl border bg-card p-5 shadow-md transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-2xl hover:border-primary/50"
+        >
+          <FileDown className="h-6 w-6 text-primary" />
+          <h3 className="mt-3 text-lg font-semibold">Export .docx</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Download a complete diary formatted for VTU submission.
+          </p>
+        </Link>
+
+        <Link
+          to="/catch-up"
+          className="rounded-xl border bg-card p-5 shadow-md transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-2xl hover:border-primary/50"
+        >
+          <CalendarDays className="h-6 w-6 text-primary" />
+          <h3 className="mt-3 text-lg font-semibold">Behind on weeks of entries?</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Catch-up mode generates plausible, varied entries for missed days based on what you actually covered.
+          </p>
+        </Link>
       </section>
     </div>
   );
