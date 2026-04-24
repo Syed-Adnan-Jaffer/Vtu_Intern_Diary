@@ -6,4 +6,11 @@
 // You can pass additional config via defineConfig({ vite: { ... } }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-export default defineConfig();
+export default defineConfig({
+  // ... your other config
+  preview: {
+    port: 10000,
+    strictPort: true,
+    allowedHosts: ["vtu-intern-diary.onrender.com"],
+  },
+})
