@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { useTheme } from "@/components/theme-provider";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
@@ -16,6 +17,8 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [mode, setMode] = useState<"signin" | "signup" | "forgot" | "reset">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -115,20 +118,21 @@ function AuthPage() {
   return (
     <div className="min-h-screen grid grid-cols-1 md:grid-cols-2">
       {/* Logo Section */}
-      <div className="flex items-center justify-center bg-white p-8">
+      <div className="flex items-center justify-center p-8">
         <div className="text-center">
           <img
             src="/Black Illustrated School Logo.gif"
             alt="VTU Internship Diary Logo"
             className="max-w-full h-auto max-h-96 mx-auto mb-6"
+            style={{ filter: isDark ? 'invert(1) brightness(1.2)' : 'none' }}
           />
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">VTU Internship Diary</h1>
-          <p className="text-gray-600">AI-assisted daily entries for VTU students</p>
+          <h1 className={`text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`}>VTU Internship Diary</h1>
+          <p className={isDark ? 'text-zinc-400' : 'text-gray-600'}>AI-assisted daily entries for VTU students</p>
         </div>
       </div>
 
       {/* Auth Section */}
-      <div className="flex items-center justify-center p-8 bg-white">
+      <div className="flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <Card>
             <CardHeader>
