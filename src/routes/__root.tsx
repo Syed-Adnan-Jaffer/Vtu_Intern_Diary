@@ -115,9 +115,9 @@ function RootComponent() {
                 <div className="mt-3 flex flex-col gap-2 text-sm">
                   <a
                     className="font-semibold text-white transition-colors hover:text-sky-300"
-                    href={`mailto:support.vtuinterndiary@gmail.com?subject=${encodeURIComponent("VTU Intern Diary Support Request")}&body=${encodeURIComponent(
-                      "Hi Support Team,\n\nI need help with:\n\nIssue details:\n- \n\nPage/feature:\n- \n\nExpected behavior:\n- \n\nActual behavior:\n- \n\nThanks,\n",
-                    )}`}
+                    href="https://mail.google.com/mail/?view=cm&fs=1&to=support.vtuinterndiary@gmail.com&su=VTU+Intern+Diary+Support+Request"
+                    target="_blank"
+                    rel="noreferrer"
                   >
                     support.vtuinterndiary@gmail.com
                   </a>
